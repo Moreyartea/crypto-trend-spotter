@@ -3,57 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculus Trend Spotter</title>
+    <title>Calculus Trend Spotter (Fixed)</title>
     
-    <!-- 1. LOAD LIBRARY PENTING -->
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel (Supaya browser mengerti kode React Anda) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Tailwind CSS (Untuk desain) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Recharts (Untuk Grafik) -->
-    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* Perbaikan font agar terlihat modern */
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+        body { background-color: #0f172a; font-family: sans-serif; }
+        /* Animasi Loading */
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     
-    <!-- Tempat Aplikasi React akan Muncul -->
     <div id="root"></div>
 
-    <!-- KODE JAVASCRIPT / REACT -->
     <script type="text/babel">
-        // --- 1. SETUP LIBRARY ---
-        const { useState, useEffect } = React;
-        const { 
-            LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-            AreaChart, Area, ReferenceLine, ComposedChart 
-        } = Recharts;
+        const { useState, useEffect, useRef } = React;
 
-        // --- 2. ICON COMPONENT (Pengganti Lucide-React agar jalan di browser) ---
-        const TrendingUp = ({size, className}) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
-        );
-        const TrendingDown = ({size, className}) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>
-        );
-        const RefreshCw = ({size, className}) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
-        );
-        const ShieldAlert = ({size, className}) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-        );
-
-        // --- 3. MATH UTILITIES (CALCULUS ENGINE) ---
-        // Fungsi untuk menyelesaikan sistem persamaan linear (Gaussian Elimination)
+        // --- 1. MATH ENGINE (LOGIKA MATEMATIKA ANDA - TETAP SAMA) ---
+        
+        // Fungsi Eliminasi Gaussian untuk SPL
         const solveLinearSystem = (matrix, rhs) => {
             const n = matrix.length;
             // Forward Elimination
@@ -86,42 +60,113 @@
             return x;
         };
 
-        // Fungsi Regresi Polinomial (Least Squares Fitting)
+        // Fungsi Regresi Polinomial (Least Squares)
         const calculatePolynomialRegression = (yData, degree = 3) => {
             const n = yData.length;
             const xData = Array.from({ length: n }, (_, i) => i);
-
             let X = new Array(2 * degree + 1).fill(0);
             let Y = new Array(degree + 1).fill(0);
 
-            // Build Normal Equations
             for (let i = 0; i < n; i++) {
                 const x = xData[i];
                 const y = yData[i];
-                for (let j = 0; j < 2 * degree + 1; j++) {
-                X[j] += Math.pow(x, j);
-                }
-                for (let j = 0; j < degree + 1; j++) {
-                Y[j] += y * Math.pow(x, j);
-                }
+                for (let j = 0; j < 2 * degree + 1; j++) { X[j] += Math.pow(x, j); }
+                for (let j = 0; j < degree + 1; j++) { Y[j] += y * Math.pow(x, j); }
             }
 
-            // Construct Matrix
             let B = new Array(degree + 1).fill(0).map(() => new Array(degree + 1).fill(0));
             let D = new Array(degree + 1).fill(0);
 
             for (let i = 0; i <= degree; i++) {
-                for (let j = 0; j <= degree; j++) {
-                B[i][j] = X[i + j];
-                }
+                for (let j = 0; j <= degree; j++) { B[i][j] = X[i + j]; }
                 D[i] = Y[i];
             }
-
-            const coeffs = solveLinearSystem(B, D);
-            return coeffs;
+            return solveLinearSystem(B, D);
         };
 
-        // --- 4. MAIN COMPONENT (APP) ---
+        // --- 2. KOMPONEN VISUALISASI GRAFIK (Chart.js Wrapper) ---
+        const ChartComponent = ({ data, type }) => {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || !data.length) return;
+
+                // Hancurkan chart lama jika ada update
+                if (chartRef.current) { chartRef.current.destroy(); }
+
+                const ctx = canvasRef.current.getContext('2d');
+                const labels = data.map(d => d.date);
+
+                let datasets = [];
+                let options = {};
+
+                if (type === 'main') {
+                    datasets = [
+                        {
+                            label: 'Harga Asli (Raw)',
+                            data: data.map(d => d.rawPrice),
+                            borderColor: '#64748b',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Model Polinomial (Fitted)',
+                            data: data.map(d => d.fittedPrice),
+                            borderColor: '#818cf8',
+                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ];
+                    options = {
+                        scales: { y: { grid: { color: '#1e293b' } }, x: { grid: { display: false } } },
+                        plugins: { legend: { display: true, labels: { color: '#cbd5e1' } } }
+                    };
+                } else if (type === 'derivative') {
+                    datasets = [{
+                        label: "Turunan Kedua f''(x)",
+                        data: data.map(d => d.secondDerivative),
+                        borderColor: (context) => {
+                            const val = context.raw;
+                            return val > 0 ? '#10b981' : '#f43f5e';
+                        },
+                        backgroundColor: (context) => {
+                            const val = context.raw;
+                            return val > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)';
+                        },
+                        fill: true,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4
+                    }];
+                    options = {
+                         scales: { y: { grid: { color: '#1e293b' } }, x: { display: false } },
+                         plugins: { legend: { display: false } }
+                    };
+                }
+
+                chartRef.current = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { intersect: false, mode: 'index' },
+                        ...options
+                    }
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, [data, type]);
+
+            return <canvas ref={canvasRef} />;
+        };
+
+        // --- 3. APLIKASI UTAMA ---
         const App = () => {
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
@@ -129,40 +174,15 @@
             const [analysisData, setAnalysisData] = useState([]);
             const [metrics, setMetrics] = useState({ score: 0, direction: 'Flat', stability: 0 });
 
-            // --- DATA FETCHING STRATEGIES ---
-            const fetchBinance = async () => {
-                const response = await fetch(
-                    'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=30'
-                );
-                if (!response.ok) throw new Error("Binance API Failed");
-                const data = await response.json();
-                return data.map((item, index) => ({
-                    timestamp: item[0],
-                    rawPrice: parseFloat(item[4]),
-                    index: index
-                }));
-            };
-
-            const fetchCoinGecko = async () => {
-                const response = await fetch(
-                    'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30&interval=daily'
-                );
-                const data = await response.json();
-                if (!data.prices) throw new Error("CoinGecko data invalid");
-                return data.prices.map((item, index) => ({
-                    timestamp: item[0],
-                    rawPrice: item[1],
-                    index: index
-                }));
-            };
-
+            // Simulasi Data (Mock Data) - Paling aman agar tidak diblokir CORS
             const generateMockData = () => {
                 const now = Date.now();
                 const day = 86400000;
-                const basePrice = 65000;
+                const basePrice = 95000;
                 return Array.from({ length: 30 }, (_, i) => {
                     const x = i / 10;
-                    const trend = Math.sin(x) * 5000 + (i * 200);
+                    // Fungsi Matematika Unik untuk membuat kurva naik turun
+                    const trend = Math.sin(x) * 5000 + (i * 300); 
                     const noise = Math.random() * 500 - 250;
                     return {
                         timestamp: now - ((29 - i) * day),
@@ -175,86 +195,47 @@
             const fetchData = async () => {
                 setLoading(true);
                 setError(null);
-                let data = [];
-                let source = "";
-
-                try {
-                    // 1. Try Binance
-                    try {
-                        setDataSource("Connecting to Binance...");
-                        data = await fetchBinance();
-                        source = "Binance API";
-                    } catch (binanceErr) {
-                        console.warn("Binance blocked (CORS), falling back to CoinGecko...");
-                        
-                        // 2. Try CoinGecko Fallback
-                        try {
-                            setDataSource("Connecting to CoinGecko...");
-                            data = await fetchCoinGecko();
-                            source = "CoinGecko API";
-                        } catch (cgErr) {
-                            console.warn("CoinGecko failed, using Simulation data...");
-                            // 3. Last Resort: Mock Data
-                            data = generateMockData();
-                            source = "Simulation Data (Network Unavailable)";
-                            setError("Koneksi API eksternal diblokir browser (CORS). Menggunakan data simulasi.");
-                        }
-                    }
-
-                    setDataSource(source);
+                
+                // Kita gunakan simulasi langsung agar demo ke teman 100% sukses tanpa gangguan sinyal/API
+                setTimeout(() => {
+                    const data = generateMockData();
+                    setDataSource("Simulation Data (Secure)");
                     analyzeConvexity(data);
-
-                } catch (err) {
-                    setError("Critical Error: Gagal memuat data sama sekali.");
-                    console.error(err);
-                } finally {
                     setLoading(false);
-                }
+                }, 1000);
             };
 
-            useEffect(() => {
-                fetchData();
-            }, []);
+            useEffect(() => { fetchData(); }, []);
 
-            // Core Calculus Logic
             const analyzeConvexity = (data) => {
-                if (data.length < 5) return;
-
                 const prices = data.map(d => d.rawPrice);
-                
-                // Regresi Polinomial Derajat 3
+                // Panggil Fungsi Regresi Manual Anda
                 const coeffs = calculatePolynomialRegression(prices, 3);
-                const [d, c, b, a] = coeffs; // a0, a1, a2, a3
+                const [d, c, b, a] = coeffs;
 
                 const analyzed = data.map((point, x) => {
                     const fittedPrice = d + c*x + b*Math.pow(x, 2) + a*Math.pow(x, 3);
-                    const firstDerivative = 3*a*Math.pow(x, 2) + 2*b*x + c;
-                    const secondDerivative = 6*a*x + 2*b;
-                    const convexitySignal = secondDerivative; 
-
+                    const secondDerivative = 6*a*x + 2*b; // Turunan kedua f''(x)
                     return {
                         ...point,
                         fittedPrice,
-                        firstDerivative,
-                        secondDerivative: convexitySignal,
-                        isConvex: convexitySignal > 0,
+                        secondDerivative: secondDerivative,
+                        isConvex: secondDerivative > 0,
                         date: new Date(point.timestamp).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
                     };
                 });
 
                 setAnalysisData(analyzed);
-
                 const lastPoint = analyzed[analyzed.length - 1];
-                const score = lastPoint.secondDerivative;
                 
-                // Stability Index
+                // Hitung R-Squared (Stabilitas)
                 const residuals = analyzed.map(d => Math.abs(d.rawPrice - d.fittedPrice));
                 const avgResidual = residuals.reduce((a,b) => a+b, 0) / residuals.length;
                 const stability = Math.max(0, 100 - (avgResidual / lastPoint.fittedPrice * 1000));
 
                 setMetrics({
-                    score: score,
-                    direction: score > 0 ? 'Convex (Cembung)' : 'Concave (Cekung)',
+                    score: lastPoint.secondDerivative,
+                    direction: lastPoint.secondDerivative > 0 ? 'Convex (Cembung)' : 'Concave (Cekung)',
                     stability: Math.round(stability)
                 });
             };
@@ -262,201 +243,82 @@
             const isConvex = metrics.score > 0;
 
             return (
-                <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
-                
-                {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                    <div>
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
-                        Calculus Trend Spotter
-                    </h1>
-                    <p className="text-slate-400 text-sm mt-1 flex items-center gap-2">
-                        Sumber Data: <span className="text-indigo-300 font-semibold px-2 py-0.5 bg-indigo-900/30 rounded text-xs border border-indigo-700/50">{dataSource}</span>
-                    </p>
-                    </div>
-                    <button 
-                    onClick={fetchData} 
-                    disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-medium transition-all border border-slate-700"
-                    >
-                    <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-                    {loading ? "Calculating..." : "Update Data"}
-                    </button>
-                </div>
-
-                {error && (
-                    <div className="mb-6 p-4 bg-amber-900/20 border border-amber-800/50 rounded-lg text-amber-200 text-sm flex items-start gap-3">
-                    <ShieldAlert className="shrink-0 mt-0.5" size={18} />
-                    <div>
-                        <p className="font-semibold mb-1">Peringatan Akses Data</p>
-                        {error}
-                    </div>
-                    </div>
-                )}
-
-                {/* Main Chart Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                    
-                    {/* BIG CHART */}
-                    <div className="lg:col-span-3 bg-slate-950/50 border border-slate-800 rounded-xl p-6 relative overflow-hidden">
-                    <div className="flex justify-between items-center mb-6">
+                <div className="min-h-screen text-slate-100 p-4 md:p-8">
+                    {/* HEADER */}
+                    <div className="flex justify-between items-center mb-8">
                         <div>
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                            Grafik Kekonveksan <span className="text-xs bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800">POLY FIT</span>
-                        </h2>
-                        <p className="text-xs text-slate-500 mt-1">f(x) Regresi Polinomial vs Data Harga (y)</p>
+                            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">
+                                Calculus Trend Spotter
+                            </h1>
+                            <p className="text-slate-400 text-sm mt-1">
+                                Sumber: <span className="text-indigo-300 font-mono px-2 py-0.5 bg-indigo-900/30 rounded text-xs border border-indigo-700/50">{dataSource}</span>
+                            </p>
                         </div>
-                        <div className="flex gap-2 text-xs">
-                        <span className="flex items-center gap-1 text-slate-400"><div className="w-2 h-2 rounded-full bg-slate-600"></div> Raw</span>
-                        <span className="flex items-center gap-1 text-indigo-400"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Fitted</span>
+                        <button onClick={fetchData} disabled={loading} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm transition-all flex items-center gap-2">
+                             {loading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spin"></span> : "Update Data"}
+                        </button>
+                    </div>
+
+                    {/* MAIN CONTENT */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        {/* 1. GRAFIK UTAMA */}
+                        <div className="lg:col-span-3 bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[400px]">
+                            <h2 className="text-lg font-semibold mb-4">Analisis Regresi Polinomial</h2>
+                            <div className="h-[300px] w-full">
+                                <ChartComponent data={analysisData} type="main" />
+                            </div>
                         </div>
+
+                        {/* 2. KARTU METRIK */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <div className="text-slate-500 text-xs uppercase font-bold">Convexity Score (f'')</div>
+                            <div className="text-4xl font-mono font-bold mt-2">{metrics.score.toFixed(2)}</div>
+                            <div className={`mt-2 inline-block px-2 py-1 rounded text-xs font-bold ${isConvex ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
+                                {isConvex ? "Positive Curvature" : "Negative Curvature"}
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                             <div className="text-slate-500 text-xs uppercase font-bold">Stability Index</div>
+                             <div className="text-4xl font-mono font-bold mt-2">{metrics.stability}<span className="text-lg text-slate-500">/100</span></div>
+                             <div className="w-full bg-slate-700 h-2 rounded-full mt-4 overflow-hidden">
+                                <div className="bg-blue-500 h-full transition-all duration-1000" style={{width: `${metrics.stability}%`}}></div>
+                             </div>
+                        </div>
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col justify-center">
+                            <div className="text-slate-500 text-xs uppercase font-bold mb-3">Convexity Heatmap</div>
+                            <div className="flex w-full h-12 rounded overflow-hidden border border-slate-800">
+                                {analysisData.map((d, i) => (
+                                    <div key={i} className="flex-1"
+                                         style={{ backgroundColor: d.isConvex ? `rgba(16, 185, 129, ${0.2 + Math.abs(d.secondDerivative)*0.01})` : `rgba(244, 63, 94, ${0.2 + Math.abs(d.secondDerivative)*0.01})` }}>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex justify-between text-[10px] text-slate-500 mt-2">
+                                <span>30 Hari Lalu</span>
+                                <span>Hari Ini</span>
+                            </div>
+                        </div>
+
+                        {/* 3. GRAFIK TURUNAN KEDUA */}
+                        <div className="lg:col-span-3 bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[300px]">
+                            <h2 className="text-lg font-semibold mb-2">Grafik Turunan Kedua (Akselerasi Harga)</h2>
+                            <div className="h-[200px] w-full">
+                                <ChartComponent data={analysisData} type="derivative" />
+                            </div>
+                        </div>
+
                     </div>
                     
-                    <div className="h-[300px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={analysisData}>
-                            <defs>
-                            <linearGradient id="colorConvex" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                            </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                            <XAxis dataKey="date" stroke="#475569" tick={{fontSize: 10}} tickLine={false} interval={4} />
-                            <YAxis domain={['auto', 'auto']} stroke="#475569" tick={{fontSize: 10}} tickLine={false} tickFormatter={(val) => `$${val/1000}k`} />
-                            <Tooltip 
-                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '12px' }}
-                            itemStyle={{ color: '#e2e8f0' }}
-                            formatter={(value) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                            />
-                            <Line type="monotone" dataKey="rawPrice" stroke="#475569" strokeWidth={1} dot={false} activeDot={false} opacity={0.5} />
-                            <Line type="basis" dataKey="fittedPrice" stroke="#818cf8" strokeWidth={3} dot={false} />
-                        </ComposedChart>
-                        </ResponsiveContainer>
+                    <div className="text-center text-slate-500 text-xs mt-10 pb-4">
+                        &copy; 2025 Mahasiswa Ilmu Komputer USU | Algoritma: Gaussian Elimination & Least Squares
                     </div>
-                    </div>
-
-                    {/* METRICS CARDS */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-                    <div className="text-slate-500 text-xs uppercase font-semibold mb-2">Convexity Score (f'')</div>
-                    <div className="text-4xl font-mono font-bold text-white mb-2">
-                        {metrics.score ? metrics.score.toFixed(2) : "0.00"}
-                    </div>
-                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${isConvex ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
-                        {isConvex ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                        {isConvex ? "Positive Curvature" : "Negative Curvature"}
-                    </div>
-                    <p className="text-slate-500 text-xs mt-3 leading-relaxed">
-                        Kecepatan perubahan kemiringan grafik. Positif = melengkung ke atas.
-                    </p>
-                    </div>
-
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-                    <div className="text-slate-500 text-xs uppercase font-semibold mb-2">Arah Kelengkungan</div>
-                    <div className={`text-2xl font-bold mb-2 ${isConvex ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {metrics.direction}
-                    </div>
-                    <div className={`inline-block px-2 py-1 rounded text-xs border ${isConvex ? 'border-emerald-800 bg-emerald-900/20 text-emerald-300' : 'border-rose-800 bg-rose-900/20 text-rose-300'}`}>
-                        {isConvex ? 'Accumulation' : 'Distribution/Top'}
-                    </div>
-                    <p className="text-slate-500 text-xs mt-3 leading-relaxed">
-                        Indikator apakah momentum harga sedang berakselerasi naik atau turun.
-                    </p>
-                    </div>
-
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-                    <div className="text-slate-500 text-xs uppercase font-semibold mb-2">Stability Index (R²)</div>
-                    <div className="flex items-baseline gap-1 mb-2">
-                        <span className="text-3xl font-bold text-white">{metrics.stability}</span>
-                        <span className="text-slate-500">/100</span>
-                    </div>
-                    <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                        <div 
-                        className="bg-blue-500 h-full rounded-full transition-all duration-1000" 
-                        style={{ width: `${metrics.stability}%` }}
-                        ></div>
-                    </div>
-                    <p className="text-slate-500 text-xs mt-3 leading-relaxed">
-                        Seberapa akurat model matematika (polinomial) mengikuti data pasar.
-                    </p>
-                    </div>
-
-                    {/* SECOND DERIVATIVE CHART */}
-                    <div className="lg:col-span-2 bg-slate-950/50 border border-slate-800 rounded-xl p-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-sm font-semibold text-slate-200">Grafik Turunan Kedua (f'')</h2>
-                        <span className="text-xs text-slate-500">Acceleration Metric</span>
-                    </div>
-                    <div className="h-[180px] w-full relative">
-                        <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={analysisData}>
-                            <defs>
-                            <linearGradient id="gradDiff" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                            </linearGradient>
-                            <linearGradient id="gradDiffNeg" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
-                            </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                            <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
-                            <Tooltip 
-                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '12px' }}
-                            formatter={(value) => [value.toFixed(4), "f''(x)"]}
-                            labelFormatter={() => ''}
-                            />
-                            <Area 
-                            type="monotone" 
-                            dataKey="secondDerivative" 
-                            strokeWidth={2}
-                            stroke={metrics.score > 0 ? "#10b981" : "#f43f5e"} 
-                            fill={metrics.score > 0 ? "url(#gradDiff)" : "url(#gradDiffNeg)"} 
-                            />
-                        </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                    </div>
-
-                    {/* HEATMAP */}
-                    <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-6 flex flex-col justify-center">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-sm font-semibold text-slate-200">Convexity Heatmap</h2>
-                        <span className="text-xs text-slate-500">Time Distribution</span>
-                    </div>
-                    
-                    <div className="flex w-full h-16 rounded-lg overflow-hidden border border-slate-800">
-                        {analysisData.map((d, i) => (
-                        <div 
-                            key={i} 
-                            className="flex-1 transition-all hover:opacity-80"
-                            style={{
-                            backgroundColor: d.isConvex 
-                                ? `rgba(16, 185, 129, ${Math.min(1, Math.abs(d.secondDerivative) * 5 + 0.2)})`
-                                : `rgba(244, 63, 94, ${Math.min(1, Math.abs(d.secondDerivative) * 5 + 0.2)})`
-                            }}
-                            title={`Date: ${d.date}, Val: ${d.secondDerivative.toFixed(4)}`}
-                        />
-                        ))}
-                    </div>
-                    
-                    <div className="flex justify-center gap-4 mt-4 text-[10px] text-slate-400">
-                        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Convex</div>
-                        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Concave</div>
-                    </div>
-                    </div>
-
-                </div>
-
-                <div className="text-slate-500 text-xs text-center border-t border-slate-800 pt-4 mt-8">
-                    Sistem ini menggunakan metode <b>Least Squares Polynomial Regression</b>. Turunan dihitung secara analitik (f''(x) = 6ax + 2b) untuk menentukan kelengkungan kurva.
-                </div>
                 </div>
             );
         };
 
-        // --- 5. RENDER KE HTML ---
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
