@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculus Trend Spotter (Fixed)</title>
+    <title>Calculus Trend Spotter (Timeframe Support)</title>
     
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -13,9 +13,11 @@
 
     <style>
         body { background-color: #0f172a; font-family: sans-serif; }
-        /* Animasi Loading */
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
+        /* Style untuk tombol aktif */
+        .btn-active { background-color: #3b82f6; color: white; border-color: #3b82f6; }
+        .btn-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
     </style>
 </head>
 <body>
@@ -25,12 +27,9 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- 1. MATH ENGINE (LOGIKA MATEMATIKA ANDA - TETAP SAMA) ---
-        
-        // Fungsi Eliminasi Gaussian untuk SPL
+        // --- 1. MATH ENGINE (TETAP SAMA) ---
         const solveLinearSystem = (matrix, rhs) => {
             const n = matrix.length;
-            // Forward Elimination
             for (let i = 0; i < n; i++) {
                 let maxRow = i;
                 for (let k = i + 1; k < n; k++) {
@@ -38,7 +37,6 @@
                 }
                 [matrix[i], matrix[maxRow]] = [matrix[maxRow], matrix[i]];
                 [rhs[i], rhs[maxRow]] = [rhs[maxRow], rhs[i]];
-
                 for (let k = i + 1; k < n; k++) {
                     const c = -matrix[k][i] / matrix[i][i];
                     for (let j = i; j < n; j++) {
@@ -48,35 +46,27 @@
                     rhs[k] += c * rhs[i];
                 }
             }
-            // Back Substitution
             const x = new Array(n).fill(0);
             for (let i = n - 1; i >= 0; i--) {
                 let sum = 0;
-                for (let j = i + 1; j < n; j++) {
-                    sum += matrix[i][j] * x[j];
-                }
+                for (let j = i + 1; j < n; j++) { sum += matrix[i][j] * x[j]; }
                 x[i] = (rhs[i] - sum) / matrix[i][i];
             }
             return x;
         };
 
-        // Fungsi Regresi Polinomial (Least Squares)
         const calculatePolynomialRegression = (yData, degree = 3) => {
             const n = yData.length;
             const xData = Array.from({ length: n }, (_, i) => i);
             let X = new Array(2 * degree + 1).fill(0);
             let Y = new Array(degree + 1).fill(0);
-
             for (let i = 0; i < n; i++) {
-                const x = xData[i];
-                const y = yData[i];
+                const x = xData[i]; const y = yData[i];
                 for (let j = 0; j < 2 * degree + 1; j++) { X[j] += Math.pow(x, j); }
                 for (let j = 0; j < degree + 1; j++) { Y[j] += y * Math.pow(x, j); }
             }
-
             let B = new Array(degree + 1).fill(0).map(() => new Array(degree + 1).fill(0));
             let D = new Array(degree + 1).fill(0);
-
             for (let i = 0; i <= degree; i++) {
                 for (let j = 0; j <= degree; j++) { B[i][j] = X[i + j]; }
                 D[i] = Y[i];
@@ -84,151 +74,142 @@
             return solveLinearSystem(B, D);
         };
 
-        // --- 2. KOMPONEN VISUALISASI GRAFIK (Chart.js Wrapper) ---
+        // --- 2. CHART COMPONENT (TETAP SAMA) ---
         const ChartComponent = ({ data, type }) => {
             const canvasRef = useRef(null);
             const chartRef = useRef(null);
 
             useEffect(() => {
                 if (!canvasRef.current || !data.length) return;
-
-                // Hancurkan chart lama jika ada update
                 if (chartRef.current) { chartRef.current.destroy(); }
 
                 const ctx = canvasRef.current.getContext('2d');
                 const labels = data.map(d => d.date);
-
                 let datasets = [];
                 let options = {};
 
                 if (type === 'main') {
                     datasets = [
-                        {
-                            label: 'Harga Asli (Raw)',
-                            data: data.map(d => d.rawPrice),
-                            borderColor: '#64748b',
-                            borderWidth: 1,
-                            pointRadius: 0,
-                            tension: 0.1
-                        },
-                        {
-                            label: 'Model Polinomial (Fitted)',
-                            data: data.map(d => d.fittedPrice),
-                            borderColor: '#818cf8',
-                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
-                            borderWidth: 3,
-                            pointRadius: 0,
-                            fill: true,
-                            tension: 0.4
-                        }
+                        { label: 'Harga Asli (Raw)', data: data.map(d => d.rawPrice), borderColor: '#64748b', borderWidth: 1, pointRadius: 0, tension: 0.1 },
+                        { label: 'Model Polinomial (Fitted)', data: data.map(d => d.fittedPrice), borderColor: '#818cf8', backgroundColor: 'rgba(129, 140, 248, 0.1)', borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 }
                     ];
-                    options = {
-                        scales: { y: { grid: { color: '#1e293b' } }, x: { grid: { display: false } } },
-                        plugins: { legend: { display: true, labels: { color: '#cbd5e1' } } }
-                    };
+                    options = { scales: { y: { grid: { color: '#1e293b' } }, x: { grid: { display: false } } }, plugins: { legend: { display: true, labels: { color: '#cbd5e1' } } } };
                 } else if (type === 'derivative') {
                     datasets = [{
-                        label: "Turunan Kedua f''(x)",
-                        data: data.map(d => d.secondDerivative),
-                        borderColor: (context) => {
-                            const val = context.raw;
-                            return val > 0 ? '#10b981' : '#f43f5e';
-                        },
-                        backgroundColor: (context) => {
-                            const val = context.raw;
-                            return val > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)';
-                        },
-                        fill: true,
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.4
+                        label: "Turunan Kedua f''(x)", data: data.map(d => d.secondDerivative),
+                        borderColor: (c) => c.raw > 0 ? '#10b981' : '#f43f5e',
+                        backgroundColor: (c) => c.raw > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                        fill: true, borderWidth: 2, pointRadius: 0, tension: 0.4
                     }];
-                    options = {
-                         scales: { y: { grid: { color: '#1e293b' } }, x: { display: false } },
-                         plugins: { legend: { display: false } }
-                    };
+                    options = { scales: { y: { grid: { color: '#1e293b' } }, x: { display: false } }, plugins: { legend: { display: false } } };
                 }
 
-                chartRef.current = new Chart(ctx, {
-                    type: 'line',
-                    data: { labels, datasets },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { intersect: false, mode: 'index' },
-                        ...options
-                    }
-                });
-
+                chartRef.current = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, ...options } });
                 return () => { if (chartRef.current) chartRef.current.destroy(); };
             }, [data, type]);
 
             return <canvas ref={canvasRef} />;
         };
 
-        // --- 3. APLIKASI UTAMA ---
+        // --- 3. APLIKASI UTAMA (MODIFIKASI DISINI) ---
         const App = () => {
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
             const [dataSource, setDataSource] = useState("Initializing...");
             const [analysisData, setAnalysisData] = useState([]);
             const [metrics, setMetrics] = useState({ score: 0, direction: 'Flat', stability: 0 });
+            
+            // STATE BARU: TIMEFRAME
+            const [timeframe, setTimeframe] = useState('1D'); // Default: 1 Hari
 
-            // Simulasi Data (Mock Data) - Paling aman agar tidak diblokir CORS
-            const generateMockData = () => {
+            // 1. Modifikasi Data Generator untuk menerima parameter Timeframe
+            const generateMockData = (selectedTimeframe) => {
                 const now = Date.now();
-                const day = 86400000;
+                
+                // Tentukan pengali waktu (Milidetik)
+                let timeMultiplier;
+                let trendSpeed;
+                
+                switch(selectedTimeframe) {
+                    case '1H': // 1 Jam
+                        timeMultiplier = 3600 * 1000; 
+                        trendSpeed = 50; // Lebih volatil dalam jam
+                        break;
+                    case '1W': // 1 Minggu
+                        timeMultiplier = 7 * 24 * 3600 * 1000;
+                        trendSpeed = 800; // Trend jangka panjang
+                        break;
+                    case '1D': // 1 Hari (Default)
+                    default:
+                        timeMultiplier = 24 * 3600 * 1000;
+                        trendSpeed = 300;
+                        break;
+                }
+
                 const basePrice = 95000;
+                
                 return Array.from({ length: 30 }, (_, i) => {
                     const x = i / 10;
-                    // Fungsi Matematika Unik untuk membuat kurva naik turun
-                    const trend = Math.sin(x) * 5000 + (i * 300); 
+                    // Logika matematika trend sedikit diubah biar variatif tiap timeframe
+                    const trend = Math.sin(x) * 5000 + (i * trendSpeed); 
                     const noise = Math.random() * 500 - 250;
                     return {
-                        timestamp: now - ((29 - i) * day),
+                        timestamp: now - ((29 - i) * timeMultiplier), // Gunakan multiplier dinamis
                         rawPrice: basePrice + trend + noise,
-                        index: i
+                        index: i,
+                        tf: selectedTimeframe // Simpan tipe timeframe untuk formatting tanggal nanti
                     };
                 });
             };
 
-            const fetchData = async () => {
+            // 2. Modifikasi Fetch Data untuk menggunakan State Timeframe saat ini
+            const fetchData = async (tf = timeframe) => {
                 setLoading(true);
-                setError(null);
-                
-                // Kita gunakan simulasi langsung agar demo ke teman 100% sukses tanpa gangguan sinyal/API
+                // Simulasi loading
                 setTimeout(() => {
-                    const data = generateMockData();
-                    setDataSource("Simulation Data (Secure)");
+                    const data = generateMockData(tf);
+                    setDataSource(`Simulation (${tf === '1H' ? 'Hourly' : tf === '1D' ? 'Daily' : 'Weekly'})`);
                     analyzeConvexity(data);
                     setLoading(false);
-                }, 1000);
+                }, 800);
             };
 
-            useEffect(() => { fetchData(); }, []);
+            // Trigger fetch ulang saat timeframe berubah
+            useEffect(() => { 
+                fetchData(timeframe); 
+            }, [timeframe]); 
 
             const analyzeConvexity = (data) => {
                 const prices = data.map(d => d.rawPrice);
-                // Panggil Fungsi Regresi Manual Anda
                 const coeffs = calculatePolynomialRegression(prices, 3);
                 const [d, c, b, a] = coeffs;
 
                 const analyzed = data.map((point, x) => {
                     const fittedPrice = d + c*x + b*Math.pow(x, 2) + a*Math.pow(x, 3);
-                    const secondDerivative = 6*a*x + 2*b; // Turunan kedua f''(x)
+                    const secondDerivative = 6*a*x + 2*b;
+                    
+                    // Format Tanggal Dinamis
+                    const dateObj = new Date(point.timestamp);
+                    let dateLabel;
+                    if (point.tf === '1H') {
+                        // Jika per jam: Tampilkan Jam:Menit (Contoh: 14:00)
+                        dateLabel = dateObj.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+                    } else {
+                        // Jika Hari/Minggu: Tampilkan Tgl Bulan (Contoh: 15 Okt)
+                        dateLabel = dateObj.toLocaleDateString('id-ID', {day: 'numeric', month: 'short'});
+                    }
+
                     return {
                         ...point,
                         fittedPrice,
-                        secondDerivative: secondDerivative,
+                        secondDerivative,
                         isConvex: secondDerivative > 0,
-                        date: new Date(point.timestamp).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
+                        date: dateLabel // Label yang sudah diformat
                     };
                 });
 
                 setAnalysisData(analyzed);
                 const lastPoint = analyzed[analyzed.length - 1];
-                
-                // Hitung R-Squared (Stabilitas)
                 const residuals = analyzed.map(d => Math.abs(d.rawPrice - d.fittedPrice));
                 const avgResidual = residuals.reduce((a,b) => a+b, 0) / residuals.length;
                 const stability = Math.max(0, 100 - (avgResidual / lastPoint.fittedPrice * 1000));
@@ -245,7 +226,7 @@
             return (
                 <div className="min-h-screen text-slate-100 p-4 md:p-8">
                     {/* HEADER */}
-                    <div className="flex justify-between items-center mb-8">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                         <div>
                             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">
                                 Calculus Trend Spotter
@@ -254,23 +235,45 @@
                                 Sumber: <span className="text-indigo-300 font-mono px-2 py-0.5 bg-indigo-900/30 rounded text-xs border border-indigo-700/50">{dataSource}</span>
                             </p>
                         </div>
-                        <button onClick={fetchData} disabled={loading} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm transition-all flex items-center gap-2">
-                             {loading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spin"></span> : "Update Data"}
-                        </button>
+
+                        {/* KONTROL TIMEFRAME */}
+                        <div className="flex items-center gap-2">
+                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+                                <button 
+                                    onClick={() => setTimeframe('1H')}
+                                    className={`px-3 py-1 text-xs font-bold rounded transition-all ${timeframe === '1H' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                    1H
+                                </button>
+                                <button 
+                                    onClick={() => setTimeframe('1D')}
+                                    className={`px-3 py-1 text-xs font-bold rounded transition-all ${timeframe === '1D' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                    1D
+                                </button>
+                                <button 
+                                    onClick={() => setTimeframe('1W')}
+                                    className={`px-3 py-1 text-xs font-bold rounded transition-all ${timeframe === '1W' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                    1W
+                                </button>
+                            </div>
+                            
+                            <button onClick={() => fetchData(timeframe)} disabled={loading} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm transition-all flex items-center gap-2 ml-2">
+                                 {loading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spin"></span> : "Update"}
+                            </button>
+                        </div>
                     </div>
 
                     {/* MAIN CONTENT */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         
-                        {/* 1. GRAFIK UTAMA */}
+                        {/* GRAFIK UTAMA */}
                         <div className="lg:col-span-3 bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[400px]">
-                            <h2 className="text-lg font-semibold mb-4">Analisis Regresi Polinomial</h2>
+                            <h2 className="text-lg font-semibold mb-4">Analisis Regresi Polinomial ({timeframe})</h2>
                             <div className="h-[300px] w-full">
                                 <ChartComponent data={analysisData} type="main" />
                             </div>
                         </div>
 
-                        {/* 2. KARTU METRIK */}
+                        {/* KARTU METRIK */}
                         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
                             <div className="text-slate-500 text-xs uppercase font-bold">Convexity Score (f'')</div>
                             <div className="text-4xl font-mono font-bold mt-2">{metrics.score.toFixed(2)}</div>
@@ -297,19 +300,18 @@
                                 ))}
                             </div>
                             <div className="flex justify-between text-[10px] text-slate-500 mt-2">
-                                <span>30 Hari Lalu</span>
-                                <span>Hari Ini</span>
+                                <span>30 {timeframe} Lalu</span>
+                                <span>Sekarang</span>
                             </div>
                         </div>
 
-                        {/* 3. GRAFIK TURUNAN KEDUA */}
+                        {/* GRAFIK TURUNAN KEDUA */}
                         <div className="lg:col-span-3 bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[300px]">
                             <h2 className="text-lg font-semibold mb-2">Grafik Turunan Kedua (Akselerasi Harga)</h2>
                             <div className="h-[200px] w-full">
                                 <ChartComponent data={analysisData} type="derivative" />
                             </div>
                         </div>
-
                     </div>
                     
                     <div className="text-center text-slate-500 text-xs mt-10 pb-4">
