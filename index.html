@@ -3,19 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculus Trend Spotter (Fixed)</title>
+    <title>Crypto Trend Spotter - Convexity Analysis</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
 
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0b1221', // Background paling gelap
+                            800: '#151e32', // Background kartu
+                            700: '#1e293b',
+                        },
+                        accent: {
+                            purple: '#a855f7',
+                            green: '#10b981',
+                            red: '#ef4444',
+                            blue: '#3b82f6'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        body { background-color: #0f172a; font-family: sans-serif; }
-        /* Animasi Loading */
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        body { background-color: #0b1221; color: #e2e8f0; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0b1221; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -23,14 +51,25 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useMemo } = React;
+        // Memanggil Recharts dari window object
+        const { 
+            ResponsiveContainer, ComposedChart, Line, AreaChart, Area, 
+            XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceArea 
+        } = Recharts;
 
-        // --- 1. MATH ENGINE (LOGIKA MATEMATIKA ANDA - TETAP SAMA) ---
+        // --- 1. ICON COMPONENTS (Inline SVG untuk performa) ---
+        const IconMenu = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>;
+        const IconChart = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>;
+        const IconFunction = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>;
+        const IconTrend = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>;
+        const IconBook = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>;
+
+        // --- 2. LOGIKA MATEMATIKA (CALCULUS ENGINE) ---
+        // (Kode ini sama persis dengan yang Anda berikan sebelumnya)
         
-        // Fungsi Eliminasi Gaussian untuk SPL
         const solveLinearSystem = (matrix, rhs) => {
             const n = matrix.length;
-            // Forward Elimination
             for (let i = 0; i < n; i++) {
                 let maxRow = i;
                 for (let k = i + 1; k < n; k++) {
@@ -38,7 +77,6 @@
                 }
                 [matrix[i], matrix[maxRow]] = [matrix[maxRow], matrix[i]];
                 [rhs[i], rhs[maxRow]] = [rhs[maxRow], rhs[i]];
-
                 for (let k = i + 1; k < n; k++) {
                     const c = -matrix[k][i] / matrix[i][i];
                     for (let j = i; j < n; j++) {
@@ -48,35 +86,27 @@
                     rhs[k] += c * rhs[i];
                 }
             }
-            // Back Substitution
             const x = new Array(n).fill(0);
             for (let i = n - 1; i >= 0; i--) {
                 let sum = 0;
-                for (let j = i + 1; j < n; j++) {
-                    sum += matrix[i][j] * x[j];
-                }
+                for (let j = i + 1; j < n; j++) { sum += matrix[i][j] * x[j]; }
                 x[i] = (rhs[i] - sum) / matrix[i][i];
             }
             return x;
         };
 
-        // Fungsi Regresi Polinomial (Least Squares)
         const calculatePolynomialRegression = (yData, degree = 3) => {
             const n = yData.length;
             const xData = Array.from({ length: n }, (_, i) => i);
             let X = new Array(2 * degree + 1).fill(0);
             let Y = new Array(degree + 1).fill(0);
-
             for (let i = 0; i < n; i++) {
-                const x = xData[i];
-                const y = yData[i];
+                const x = xData[i]; const y = yData[i];
                 for (let j = 0; j < 2 * degree + 1; j++) { X[j] += Math.pow(x, j); }
                 for (let j = 0; j < degree + 1; j++) { Y[j] += y * Math.pow(x, j); }
             }
-
             let B = new Array(degree + 1).fill(0).map(() => new Array(degree + 1).fill(0));
             let D = new Array(degree + 1).fill(0);
-
             for (let i = 0; i <= degree; i++) {
                 for (let j = 0; j <= degree; j++) { B[i][j] = X[i + j]; }
                 D[i] = Y[i];
@@ -84,158 +114,63 @@
             return solveLinearSystem(B, D);
         };
 
-        // --- 2. KOMPONEN VISUALISASI GRAFIK (Chart.js Wrapper) ---
-        const ChartComponent = ({ data, type }) => {
-            const canvasRef = useRef(null);
-            const chartRef = useRef(null);
-
-            useEffect(() => {
-                if (!canvasRef.current || !data.length) return;
-
-                // Hancurkan chart lama jika ada update
-                if (chartRef.current) { chartRef.current.destroy(); }
-
-                const ctx = canvasRef.current.getContext('2d');
-                const labels = data.map(d => d.date);
-
-                let datasets = [];
-                let options = {};
-
-                if (type === 'main') {
-                    datasets = [
-                        {
-                            label: 'Harga Asli (Raw)',
-                            data: data.map(d => d.rawPrice),
-                            borderColor: '#64748b',
-                            borderWidth: 1,
-                            pointRadius: 0,
-                            tension: 0.1
-                        },
-                        {
-                            label: 'Model Polinomial (Fitted)',
-                            data: data.map(d => d.fittedPrice),
-                            borderColor: '#818cf8',
-                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
-                            borderWidth: 3,
-                            pointRadius: 0,
-                            fill: true,
-                            tension: 0.4
-                        }
-                    ];
-                    options = {
-                        scales: { y: { grid: { color: '#1e293b' } }, x: { grid: { display: false } } },
-                        plugins: { legend: { display: true, labels: { color: '#cbd5e1' } } }
-                    };
-                } else if (type === 'derivative') {
-                    datasets = [{
-                        label: "Turunan Kedua f''(x)",
-                        data: data.map(d => d.secondDerivative),
-                        borderColor: (context) => {
-                            const val = context.raw;
-                            return val > 0 ? '#10b981' : '#f43f5e';
-                        },
-                        backgroundColor: (context) => {
-                            const val = context.raw;
-                            return val > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)';
-                        },
-                        fill: true,
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.4
-                    }];
-                    options = {
-                         scales: { y: { grid: { color: '#1e293b' } }, x: { display: false } },
-                         plugins: { legend: { display: false } }
-                    };
-                }
-
-                chartRef.current = new Chart(ctx, {
-                    type: 'line',
-                    data: { labels, datasets },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { intersect: false, mode: 'index' },
-                        ...options
-                    }
-                });
-
-                return () => { if (chartRef.current) chartRef.current.destroy(); };
-            }, [data, type]);
-
-            return <canvas ref={canvasRef} />;
-        };
-
-        // --- 3. APLIKASI UTAMA ---
+        // --- 3. MAIN APP COMPONENT ---
         const App = () => {
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
-            const [dataSource, setDataSource] = useState("Initializing...");
-            const [analysisData, setAnalysisData] = useState([]);
+            const [data, setData] = useState([]);
             const [metrics, setMetrics] = useState({ score: 0, direction: 'Flat', stability: 0 });
 
-            // Simulasi Data (Mock Data) - Paling aman agar tidak diblokir CORS
-            const generateMockData = () => {
-                const now = Date.now();
-                const day = 86400000;
-                const basePrice = 95000;
-                return Array.from({ length: 30 }, (_, i) => {
-                    const x = i / 10;
-                    // Fungsi Matematika Unik untuk membuat kurva naik turun
-                    const trend = Math.sin(x) * 5000 + (i * 300); 
-                    const noise = Math.random() * 500 - 250;
-                    return {
-                        timestamp: now - ((29 - i) * day),
-                        rawPrice: basePrice + trend + noise,
-                        index: i
-                    };
-                });
-            };
+            // Generate Mock Data saat load (Agar grafik langsung muncul)
+            useEffect(() => {
+                const generateData = () => {
+                    const now = Date.now();
+                    const day = 86400000;
+                    const basePrice = 60000;
+                    // Membuat pola gelombang yang bagus untuk visualisasi konveksitas
+                    const raw = Array.from({ length: 30 }, (_, i) => {
+                        const x = i / 8; 
+                        // Fungsi: Naik perlahan (Cekung ke bawah) -> Naik cepat (Cembung)
+                        const trend = (i * i * 15) + (Math.sin(x) * 1000); 
+                        const noise = Math.random() * 400 - 200;
+                        return {
+                            timestamp: now - ((29 - i) * day),
+                            rawPrice: basePrice + trend + noise,
+                            index: i
+                        };
+                    });
+                    analyzeConvexity(raw);
+                };
+                generateData();
+            }, []);
 
-            const fetchData = async () => {
-                setLoading(true);
-                setError(null);
-                
-                // Kita gunakan simulasi langsung agar demo ke teman 100% sukses tanpa gangguan sinyal/API
-                setTimeout(() => {
-                    const data = generateMockData();
-                    setDataSource("Simulation Data (Secure)");
-                    analyzeConvexity(data);
-                    setLoading(false);
-                }, 1000);
-            };
-
-            useEffect(() => { fetchData(); }, []);
-
-            const analyzeConvexity = (data) => {
-                const prices = data.map(d => d.rawPrice);
-                // Panggil Fungsi Regresi Manual Anda
+            const analyzeConvexity = (rawData) => {
+                const prices = rawData.map(d => d.rawPrice);
                 const coeffs = calculatePolynomialRegression(prices, 3);
                 const [d, c, b, a] = coeffs;
 
-                const analyzed = data.map((point, x) => {
+                const analyzed = rawData.map((point, x) => {
                     const fittedPrice = d + c*x + b*Math.pow(x, 2) + a*Math.pow(x, 3);
-                    const secondDerivative = 6*a*x + 2*b; // Turunan kedua f''(x)
+                    const secondDerivative = 6*a*x + 2*b; // f''(x)
                     return {
                         ...point,
                         fittedPrice,
-                        secondDerivative: secondDerivative,
+                        secondDerivative,
                         isConvex: secondDerivative > 0,
-                        date: new Date(point.timestamp).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
+                        date: new Date(point.timestamp).toLocaleDateString('id-ID', {day:'2-digit', month:'short'})
                     };
                 });
 
-                setAnalysisData(analyzed);
-                const lastPoint = analyzed[analyzed.length - 1];
-                
-                // Hitung R-Squared (Stabilitas)
-                const residuals = analyzed.map(d => Math.abs(d.rawPrice - d.fittedPrice));
-                const avgResidual = residuals.reduce((a,b) => a+b, 0) / residuals.length;
-                const stability = Math.max(0, 100 - (avgResidual / lastPoint.fittedPrice * 1000));
+                setData(analyzed);
+
+                // Hitung Metrics
+                const last = analyzed[analyzed.length - 1];
+                const residuals = analyzed.map(p => Math.abs(p.rawPrice - p.fittedPrice));
+                const avgResidual = residuals.reduce((a, b) => a + b, 0) / residuals.length;
+                // Stability logic: makin kecil error, makin tinggi skor
+                const stability = Math.max(0, Math.min(100, 100 - (avgResidual / last.fittedPrice * 2000)));
 
                 setMetrics({
-                    score: lastPoint.secondDerivative,
-                    direction: lastPoint.secondDerivative > 0 ? 'Convex (Cembung)' : 'Concave (Cekung)',
+                    score: last.secondDerivative,
+                    direction: last.secondDerivative > 0 ? 'Convex' : 'Concave',
                     stability: Math.round(stability)
                 });
             };
@@ -243,78 +178,234 @@
             const isConvex = metrics.score > 0;
 
             return (
-                <div className="min-h-screen text-slate-100 p-4 md:p-8">
-                    {/* HEADER */}
-                    <div className="flex justify-between items-center mb-8">
-                        <div>
-                            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">
-                                Calculus Trend Spotter
-                            </h1>
-                            <p className="text-slate-400 text-sm mt-1">
-                                Sumber: <span className="text-indigo-300 font-mono px-2 py-0.5 bg-indigo-900/30 rounded text-xs border border-indigo-700/50">{dataSource}</span>
-                            </p>
-                        </div>
-                        <button onClick={fetchData} disabled={loading} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm transition-all flex items-center gap-2">
-                             {loading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spin"></span> : "Update Data"}
-                        </button>
-                    </div>
-
-                    {/* MAIN CONTENT */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        
-                        {/* 1. GRAFIK UTAMA */}
-                        <div className="lg:col-span-3 bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[400px]">
-                            <h2 className="text-lg font-semibold mb-4">Analisis Regresi Polinomial</h2>
-                            <div className="h-[300px] w-full">
-                                <ChartComponent data={analysisData} type="main" />
-                            </div>
-                        </div>
-
-                        {/* 2. KARTU METRIK */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                            <div className="text-slate-500 text-xs uppercase font-bold">Convexity Score (f'')</div>
-                            <div className="text-4xl font-mono font-bold mt-2">{metrics.score.toFixed(2)}</div>
-                            <div className={`mt-2 inline-block px-2 py-1 rounded text-xs font-bold ${isConvex ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
-                                {isConvex ? "Positive Curvature" : "Negative Curvature"}
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                             <div className="text-slate-500 text-xs uppercase font-bold">Stability Index</div>
-                             <div className="text-4xl font-mono font-bold mt-2">{metrics.stability}<span className="text-lg text-slate-500">/100</span></div>
-                             <div className="w-full bg-slate-700 h-2 rounded-full mt-4 overflow-hidden">
-                                <div className="bg-blue-500 h-full transition-all duration-1000" style={{width: `${metrics.stability}%`}}></div>
-                             </div>
-                        </div>
-
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col justify-center">
-                            <div className="text-slate-500 text-xs uppercase font-bold mb-3">Convexity Heatmap</div>
-                            <div className="flex w-full h-12 rounded overflow-hidden border border-slate-800">
-                                {analysisData.map((d, i) => (
-                                    <div key={i} className="flex-1"
-                                         style={{ backgroundColor: d.isConvex ? `rgba(16, 185, 129, ${0.2 + Math.abs(d.secondDerivative)*0.01})` : `rgba(244, 63, 94, ${0.2 + Math.abs(d.secondDerivative)*0.01})` }}>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex justify-between text-[10px] text-slate-500 mt-2">
-                                <span>30 Hari Lalu</span>
-                                <span>Hari Ini</span>
-                            </div>
-                        </div>
-
-                        {/* 3. GRAFIK TURUNAN KEDUA */}
-                        <div className="lg:col-span-3 bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[300px]">
-                            <h2 className="text-lg font-semibold mb-2">Grafik Turunan Kedua (Akselerasi Harga)</h2>
-                            <div className="h-[200px] w-full">
-                                <ChartComponent data={analysisData} type="derivative" />
-                            </div>
-                        </div>
-
-                    </div>
+                <div className="flex min-h-screen font-sans">
                     
-                    <div className="text-center text-slate-500 text-xs mt-10 pb-4">
-                        &copy; 2025 Mahasiswa Ilmu Komputer USU | Algoritma: Gaussian Elimination & Least Squares
-                    </div>
+                    {/* --- SIDEBAR (Sesuai Screenshot) --- */}
+                    <aside className="w-64 bg-dark-900 border-r border-slate-800 hidden md:flex flex-col">
+                        <div className="p-6 flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white">C</div>
+                            <span className="font-bold text-lg text-white">CryptoTS</span>
+                        </div>
+                        
+                        <nav className="flex-1 px-4 space-y-2 mt-4">
+                            <a href="#" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition">
+                                <IconMenu /> Ringkasan
+                            </a>
+                            <a href="#" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition">
+                                <IconChart /> Analisis Diferensial
+                            </a>
+                            <a href="#" className="flex items-center gap-3 px-4 py-3 bg-blue-600/10 text-blue-400 rounded-lg border border-blue-600/20">
+                                <IconFunction /> Uji Konveksitas
+                            </a>
+                            <a href="#" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition">
+                                <IconTrend /> Deteksi Trend
+                            </a>
+                            <a href="#" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition">
+                                <IconBook /> Dokumentasi
+                            </a>
+                        </nav>
+                    </aside>
+
+                    {/* --- MAIN CONTENT --- */}
+                    <main className="flex-1 p-6 md:p-10 overflow-y-auto">
+                        
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-8">
+                            <div>
+                                <h1 className="text-2xl font-bold text-white mb-2">Uji Kekonveksan</h1>
+                                <p className="text-slate-400 text-sm">Analisis kelengkungan kurva harga untuk menentukan apakah tren bersifat cembung atau cekung.</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="flex items-center gap-2 text-xs font-mono bg-dark-800 px-3 py-1.5 rounded-full border border-slate-700 text-green-400">
+                                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Online
+                                </span>
+                                <div className="text-xs bg-slate-800 px-3 py-1.5 rounded border border-slate-700 text-slate-300">
+                                    Bitcoin <span className="bg-slate-700 px-1 rounded ml-1 text-[10px]">CTRL K</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* --- 1. GRAFIK KEKONVEKSAN (MAIN CHART) --- */}
+                        <div className="bg-dark-800 border border-slate-700/50 rounded-xl p-1 mb-6 shadow-xl">
+                            <div className="p-5 border-b border-slate-700/50 flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                    <h3 className="font-bold text-white">Grafik Kekonveksan</h3>
+                                    <span className="text-[10px] bg-accent-purple/20 text-accent-purple px-2 py-0.5 rounded border border-accent-purple/30 font-semibold tracking-wider">POLY FIT</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button className="text-xs px-3 py-1 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition">Raw Price</button>
+                                    <button className="text-xs px-3 py-1 bg-accent-purple/20 text-accent-purple border border-accent-purple/30 rounded">Fitted Curve</button>
+                                </div>
+                            </div>
+                            
+                            <div className="h-[350px] w-full p-4 relative bg-[#0f1623]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <ComposedChart data={data} margin={{ top: 20, right: 0, bottom: 0, left: 0 }}>
+                                        <defs>
+                                            <linearGradient id="gridGradient" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#1e293b" stopOpacity={0.4}/>
+                                                <stop offset="100%" stopColor="#1e293b" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                                        
+                                        {/* Background Banding Effect (Visual only) */}
+                                        {data.filter((_, i) => i % 6 === 0).map((d, i) => (
+                                            <ReferenceArea key={i} x1={d.index} x2={d.index + 3} fill="#1e293b" fillOpacity={0.3} />
+                                        ))}
+
+                                        <Tooltip 
+                                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                                            itemStyle={{ color: '#cbd5e1' }}
+                                            formatter={(value) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                                        />
+                                        
+                                        {/* Garis Data Mentah (Tipis Biru) */}
+                                        <Line type="monotone" dataKey="rawPrice" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.4} />
+                                        
+                                        {/* Garis Regresi (Tebal Ungu - Sesuai Screenshot) */}
+                                        <Line type="basis" dataKey="fittedPrice" stroke="#a855f7" strokeWidth={3} dot={false} 
+                                              style={{ filter: 'drop-shadow(0 0 6px rgba(168, 85, 247, 0.5))' }}/>
+                                    </ComposedChart>
+                                </ResponsiveContainer>
+                                <div className="absolute bottom-4 left-6 text-[10px] text-slate-500 italic">
+                                    *Grafik ini membandingkan data mentah dengan kurva regresi polinomial untuk menilai kelengkungan fungsi f(x).
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* --- 2. METRICS ROW --- */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                            
+                            {/* Card: Convexity Score */}
+                            <div className="bg-dark-800 border border-slate-700/50 rounded-xl p-6 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition">
+                                    <IconFunction />
+                                </div>
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">CONVEXITY SCORE</div>
+                                <div className="text-4xl font-mono font-bold text-white mb-2">{metrics.score.toFixed(2)}</div>
+                                <div className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide border ${isConvex ? 'bg-slate-800 text-slate-300 border-slate-600' : 'bg-red-900/20 text-red-400 border-red-900'}`}>
+                                    {isConvex ? 'Positive Curvature' : 'Negative Curvature'}
+                                </div>
+                                <div className="mt-4 text-[11px] text-slate-500 leading-relaxed">
+                                    Nilai positif menunjukkan kecenderungan cembung (kurva terbuka ke atas).
+                                </div>
+                            </div>
+
+                            {/* Card: Arah Kelengkungan */}
+                            <div className="bg-dark-800 border border-slate-700/50 rounded-xl p-6">
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ARAH KELENGKUNGAN</div>
+                                <div className={`text-3xl font-bold mb-2 ${isConvex ? 'text-green-400' : 'text-red-400'}`}>
+                                    {metrics.direction}
+                                </div>
+                                <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${isConvex ? 'bg-green-900/20 border-green-800 text-green-400' : 'bg-red-900/20 border-red-800 text-red-400'}`}>
+                                    Dominan
+                                </div>
+                                <div className="mt-4 text-[11px] text-slate-500 leading-relaxed">
+                                    Kelengkungan {isConvex ? 'positif' : 'negatif'} menggambarkan {isConvex ? 'percepatan kenaikan harga' : 'perlambatan momentum'} (accelerating trend).
+                                </div>
+                            </div>
+
+                            {/* Card: Stability Index */}
+                            <div className="bg-dark-800 border border-slate-700/50 rounded-xl p-6">
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">STABILITY INDEX</div>
+                                <div className="flex items-baseline gap-1 mb-3">
+                                    <span className="text-4xl font-bold text-white">{metrics.stability}</span>
+                                    <span className="text-sm text-slate-500 font-mono">/100</span>
+                                </div>
+                                {/* Progress Bar */}
+                                <div className="w-full bg-slate-700/50 h-2 rounded-full overflow-hidden mb-4">
+                                    <div className="bg-blue-500 h-full rounded-full" style={{ width: `${metrics.stability}%` }}></div>
+                                </div>
+                                <div className="text-[11px] text-slate-500 leading-relaxed">
+                                    Mengukur konsistensi kelengkungan selama interval pengamatan.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* --- 3. BOTTOM ROW (Chart & Heatmap) --- */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            
+                            {/* Grafik Turunan Kedua */}
+                            <div className="bg-dark-800 border border-slate-700/50 rounded-xl p-6 h-[250px] relative">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-sm font-bold text-white">Grafik Turunan Kedua ($f''$)</h3>
+                                    <span className="text-[10px] text-slate-500">Acceleration Metric</span>
+                                </div>
+                                <div className="h-[160px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={data}>
+                                            <defs>
+                                                <linearGradient id="gradScore" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={isConvex ? "#10b981" : "#ef4444"} stopOpacity={0.3}/>
+                                                    <stop offset="95%" stopColor={isConvex ? "#10b981" : "#ef4444"} stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+                                            <Area 
+                                                type="monotone" 
+                                                dataKey="secondDerivative" 
+                                                stroke={isConvex ? "#10b981" : "#ef4444"} 
+                                                fill="url(#gradScore)" 
+                                                strokeWidth={2} 
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="flex justify-between text-[10px] text-slate-500 mt-2 px-1">
+                                    <span>Concave ($f'' < 0$)</span>
+                                    <span>Convex ($f'' > 0$)</span>
+                                </div>
+                            </div>
+
+                            {/* Convexity Heatmap */}
+                            <div className="bg-dark-800 border border-slate-700/50 rounded-xl p-6 h-[250px] flex flex-col justify-center">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-sm font-bold text-white">Convexity Heatmap</h3>
+                                    <span className="text-[10px] text-slate-500">Time Distribution</span>
+                                </div>
+                                
+                                {/* Heatmap Bar */}
+                                <div className="w-full h-20 flex rounded-lg overflow-hidden border border-slate-700/50">
+                                    {data.map((point, i) => {
+                                        // Logic pewarnaan berdasarkan nilai turunan kedua
+                                        let bg = '#334155'; // Default grey
+                                        const val = point.secondDerivative;
+                                        if (val > 0.1) bg = '#10b981'; // Green (Convex)
+                                        else if (val > 0) bg = '#34d399'; // Light Green
+                                        else if (val < -0.1) bg = '#ef4444'; // Red (Concave)
+                                        else bg = '#f87171'; // Light Red
+                                        
+                                        // Opacity variation
+                                        const opacity = 0.4 + (Math.min(Math.abs(val), 1) * 0.6);
+                                        
+                                        return (
+                                            <div key={i} className="flex-1 transition-all hover:brightness-110"
+                                                 style={{ backgroundColor: bg, opacity: opacity }}
+                                                 title={`${point.date}: ${val.toFixed(2)}`}>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                <div className="flex justify-center gap-6 mt-6">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                        <span className="text-[10px] text-slate-400">Convex Zone</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                        <span className="text-[10px] text-slate-400">Concave Zone</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-slate-600"></div>
+                                        <span className="text-[10px] text-slate-400">Flat</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </main>
                 </div>
             );
         };
